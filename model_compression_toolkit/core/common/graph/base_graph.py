@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from collections import namedtuple
-
+from dataclasses import dataclass
 from copy import copy, deepcopy
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Mapping, Sequence
 
 import networkx as nx
 import numpy as np
@@ -33,8 +32,12 @@ from model_compression_toolkit.core.common.user_info import UserInformation
 from model_compression_toolkit.logger import Logger
 from model_compression_toolkit.target_platform_capabilities.target_platform.targetplatform2framework import TargetPlatformCapabilities
 
-OutTensor = namedtuple('OutTensor', 'node node_out_index')
+@dataclass
+class OutTensor:
+    """Dataclass to keep maintain info about output tensors in list, dict, or as simple tensor."""
 
+    node: BaseNode
+    output_order: BaseNode | list[BaseNode] | dict[str, BaseNode]
 
 class Graph(nx.MultiDiGraph, GraphSearches):
     """
@@ -373,9 +376,25 @@ class Graph(nx.MultiDiGraph, GraphSearches):
 
         graph_outputs = self.get_outputs()
         new_graph_outputs = copy(graph_outputs)
-        for graph_ot_index, ot in enumerate(graph_outputs):
-            if current_node == ot.node:
-                new_graph_outputs[graph_ot_index] = OutTensor(new_node, ot.node_out_index)
+
+        def _replace_order(order: Any):
+            """recursively replaces FX nodes by Graph nodes in output node.
+
+            Args:
+                order: tensor, sequence or dict of FX tensors
+
+            Returns:
+                Graph Node, sequence or dict of Graph Nodes
+            """
+            if isinstance(order, Mapping):
+                return {k:_replace_order(v) for k,v in order.items()}
+            elif isinstance(order, Sequence):
+                return [_replace_order(v) for v in order]
+            return new_node if order==current_node else order
+        
+        for out_tensor, new_out_tensor in zip(graph_outputs, new_graph_outputs):
+            new_out_tensor.node = _replace_order(out_tensor)
+            new_out_tensor.output_order = _replace_order(out_tensor.output_order)
         self.set_outputs(new_graph_outputs)
 
     def replace_input_node(self,

@@ -13,7 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 import inspect
-from typing import Dict, List, Tuple, Callable
+from typing import Callable, Dict, List, Mapping, Sequence, Tuple
+
 import torch
 from torch.fx import GraphModule
 
@@ -95,11 +96,13 @@ def nodes_builder(model: GraphModule,
                 node_has_activation = False
                 Logger.warning(
                     'Pytorch model has a parameter or constant Tensor value. This can cause unexpected behaviour when '
-                    'converting the model.')
+                    'converting the model.'
+                    f" FX call_function getattr {node.args=} {node.kwargs=}")
         elif node.op == PLACEHOLDER:
             node_type = DummyPlaceHolder
         elif node.op == OUTPUT:
-            output_nodes += node.all_input_nodes
+            # args[0] contains how output tensors should be returned (list or dict of tensors...)
+            output_nodes.append((node.all_input_nodes, node.args[0]))
             continue
         elif node.op == CALL_METHOD:
             if hasattr(torch, node.target):
@@ -109,14 +112,15 @@ def nodes_builder(model: GraphModule,
             else:
                 raise Exception(f'Call method of type \'{node.target}\' is currently not supported.')
         elif node.op == GET_ATTR:
-            if node.meta[TYPE] == torch.Tensor:
+            if node.meta[TYPE] in (torch.Tensor, torch.nn.Parameter):
                 node_type = BufferHolder
             else:
                 node_type = ConstantHolder
             node_has_activation = False
             Logger.warning(
                 'Pytorch model has a parameter or constant Tensor value. This can cause unexpected behaviour when '
-                'converting the model.')
+                'converting the model.'
+                f' FX get_attr {"buffer" if isinstance(node_type,BufferHolder) else "constant"}')
         else:
             raise Exception(f'Unknown node type: {node.name}')
 
@@ -143,7 +147,7 @@ def nodes_builder(model: GraphModule,
         if node.op != PLACEHOLDER:
             for input_node in node.all_input_nodes:
                 tensor_meta = input_node.meta
-                if tensor_meta[TYPE] == torch.Tensor:
+                if tensor_meta[TYPE] in (torch.Tensor, torch.nn.Parameter):
                     input_shape += [list(tensor_meta[TENSOR_META].shape)]
                 elif tensor_meta[TYPE] == tuple:
                     input_shape += [list(n.shape) for n in tensor_meta[TENSOR_META]]
@@ -221,8 +225,25 @@ def nodes_builder(model: GraphModule,
         nodes.append(graph_node)
 
     # generate graph outputs list
-    for node in output_nodes:
-        outputs.append(OutTensor(fx_node_2_graph_node[node], output_nodes.index(node)))
+    def _map_fx_nodes(output_order):
+        """Recursively maps output FX nodes to Graph nodes
+
+        Args:
+            output_order: expected FX output
+
+        Returns:
+            Graph node output
+        """
+        if isinstance(output_order, Mapping):
+            return {k: _map_fx_nodes(v) for k, v in output_order.items()}
+        elif isinstance(output_order, Sequence):
+            return tuple([_map_fx_nodes(v) for v in output_order])
+
+        return fx_node_2_graph_node[output_order]
+
+    for nodes, output_order in output_nodes:
+        out_nodes=[fx_node_2_graph_node[node] for node in nodes]
+        outputs.append(OutTensor(out_nodes, _map_fx_nodes(output_order)))
 
     return nodes, inputs, outputs, fx_node_2_graph_node
 
