@@ -13,45 +13,44 @@
 # limitations under the License.
 # ==============================================================================
 
-from typing import Callable
 from functools import partial
+from typing import Callable
 
-from model_compression_toolkit.core import CoreConfig
-from model_compression_toolkit.logger import Logger
+from mct_quantizers import KerasActivationQuantizationHolder
+
 from model_compression_toolkit.constants import FOUND_TF
+from model_compression_toolkit.core import CoreConfig
 from model_compression_toolkit.core.common.mixed_precision.kpi_tools.kpi import KPI
-from model_compression_toolkit.core.common.mixed_precision.mixed_precision_quantization_config import \
-    MixedPrecisionQuantizationConfigV2
-from model_compression_toolkit.target_platform_capabilities.target_platform.targetplatform2framework import TargetPlatformCapabilities
-from model_compression_toolkit.core.runner import core_runner, _init_tensorboard_writer
+from model_compression_toolkit.core.common.mixed_precision.mixed_precision_quantization_config import (
+    MixedPrecisionQuantizationConfigV2,
+)
+from model_compression_toolkit.core.runner import _init_tensorboard_writer, core_runner
+from model_compression_toolkit.logger import Logger
 from model_compression_toolkit.ptq.runner import ptq_runner
+from model_compression_toolkit.target_platform_capabilities.target_platform.targetplatform2framework import (
+    TargetPlatformCapabilities,
+)
 
 if FOUND_TF:
     import tensorflow as tf
+    from mct_quantizers import KerasActivationQuantizationHolder
     from tensorflow.keras.layers import Layer
     from tensorflow.keras.models import Model
 
-    from mct_quantizers import KerasActivationQuantizationHolder, KerasQuantizationWrapper
+    from model_compression_toolkit import get_target_platform_capabilities
+    from model_compression_toolkit.constants import TENSORFLOW
+    from model_compression_toolkit.core import common
+    from model_compression_toolkit.core.common.framework_info import FrameworkInfo
+    from model_compression_toolkit.core.keras.back2framework.keras_model_builder import KerasModelBuilder
     from model_compression_toolkit.core.keras.default_framework_info import DEFAULT_KERAS_INFO
     from model_compression_toolkit.core.keras.keras_implementation import KerasImplementation
     from model_compression_toolkit.core.keras.keras_model_validation import KerasModelValidation
+    from model_compression_toolkit.qat.common.qat_config import QATConfig, is_qat_applicable
+    from model_compression_toolkit.qat.keras.quantizer.quantization_builder import (
+        get_activation_quantizer_holder,
+        quantization_builder,
+    )
     from model_compression_toolkit.target_platform_capabilities.constants import DEFAULT_TP_MODEL
-
-    from model_compression_toolkit.core.keras.back2framework.keras_model_builder import KerasModelBuilder
-
-    from model_compression_toolkit import get_target_platform_capabilities
-
-    from model_compression_toolkit import get_target_platform_capabilities
-    from model_compression_toolkit.core import common
-    from model_compression_toolkit.core.common import BaseNode
-    from model_compression_toolkit.constants import TENSORFLOW
-    from model_compression_toolkit.core.common.framework_info import FrameworkInfo
-    from model_compression_toolkit.qat.common.qat_config import is_qat_applicable
-    from model_compression_toolkit.target_platform_capabilities.constants import DEFAULT_TP_MODEL
-    from model_compression_toolkit.core.keras.default_framework_info import DEFAULT_KERAS_INFO
-    from model_compression_toolkit.qat.keras.quantizer.quantization_builder import quantization_builder, \
-    get_activation_quantizer_holder
-    from model_compression_toolkit.qat.common.qat_config import QATConfig
 
     DEFAULT_KERAS_TPC = get_target_platform_capabilities(TENSORFLOW, DEFAULT_TP_MODEL)
 
@@ -74,7 +73,8 @@ if FOUND_TF:
                                                          qat_config,
                                                          DEFAULT_KERAS_INFO)
             if len(weights_quantizers) > 0:
-                return KerasQuantizationWrapper(layer, weights_quantizers)
+                layer.trainable = True
+                return KerasTrainableQuantizationWrapper(layer, weights_quantizers)
         return layer
 
 
@@ -256,7 +256,7 @@ if FOUND_TF:
 
          """
         def _export(layer):
-            if isinstance(layer, KerasQuantizationWrapper):
+            if isinstance(layer, KerasTrainableQuantizationWrapper):
                 layer = layer.convert_to_inferable_quantizers()
             # In the KerasActivationQuantizationHolder case - converting the quantizers only
             # is not enough. We need to create a new layer with inferable quantizers. The reason for that
