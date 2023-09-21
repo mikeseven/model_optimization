@@ -30,6 +30,8 @@ if FOUND_TF:
     import tensorflow as tf
     from tensorflow.keras.layers import Layer
     from tensorflow.keras.models import Model
+    from mct_quantizers import KerasActivationQuantizationHolder
+    from model_compression_toolkit.trainable_infrastructure import KerasTrainableQuantizationWrapper
 
     from mct_quantizers import KerasActivationQuantizationHolder, KerasQuantizationWrapper
     from model_compression_toolkit.core.keras.default_framework_info import DEFAULT_KERAS_INFO
@@ -74,7 +76,8 @@ if FOUND_TF:
                                                          qat_config,
                                                          DEFAULT_KERAS_INFO)
             if len(weights_quantizers) > 0:
-                return KerasQuantizationWrapper(layer, weights_quantizers)
+                layer.trainable = True
+                return KerasTrainableQuantizationWrapper(layer, weights_quantizers)
         return layer
 
 
@@ -256,7 +259,7 @@ if FOUND_TF:
 
          """
         def _export(layer):
-            if isinstance(layer, KerasQuantizationWrapper):
+            if isinstance(layer, KerasTrainableQuantizationWrapper):
                 layer = layer.convert_to_inferable_quantizers()
             # In the KerasActivationQuantizationHolder case - converting the quantizers only
             # is not enough. We need to create a new layer with inferable quantizers. The reason for that
