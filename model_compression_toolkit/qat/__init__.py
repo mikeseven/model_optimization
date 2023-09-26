@@ -13,6 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 from model_compression_toolkit.qat.common.qat_config import QATConfig, TrainingMethod
+from model_compression_toolkit.constants import FOUND_TF, FOUND_TORCH
 
-from model_compression_toolkit.qat.keras.quantization_facade import keras_quantization_aware_training_init, keras_quantization_aware_training_finalize
-from model_compression_toolkit.qat.pytorch.quantization_facade import pytorch_quantization_aware_training_init, pytorch_quantization_aware_training_finalize
+if FOUND_TF:
+    from model_compression_toolkit.qat.keras.quantization_facade import keras_quantization_aware_training_init, keras_quantization_aware_training_finalize
+
+if FOUND_TORCH:
+    from model_compression_toolkit.qat.pytorch.quantization_facade import pytorch_quantization_aware_training_init, pytorch_quantization_aware_training_finalize
