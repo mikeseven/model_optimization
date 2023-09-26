@@ -77,11 +77,13 @@ def _get_mean_std_outputs(node: BaseNode,
         if len(bn_nodes) != 0:
             bn_node = bn_nodes[0]
             moving_variance = bn_node.get_weights_by_keys(MOVING_VARIANCE)
-            try:
-                std_output = np.sqrt(moving_variance)
-            except RuntimeWarning:
-                Logger.warning(f'BN {bn_node} has invalid moving variance {moving_variance}')
-                std_output=1.0
+            
+            # fix bad variances
+            eps = 1e-5 # typical default eps for normalization layers in pytorch
+            moving_variance = np.where((moving_variance < 0) | (abs(moving_variance) < eps), \
+                eps, moving_variance)
+            
+            std_output = np.sqrt(moving_variance)
             mean_output = bn_node.get_weights_by_keys(MOVING_MEAN)
 
     return mean_output, std_output
