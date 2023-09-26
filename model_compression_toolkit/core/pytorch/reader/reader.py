@@ -17,7 +17,6 @@
 import logging
 from typing import Callable, Dict
 
-import numpy as np
 import torch
 from torch.fx import symbolic_trace
 from torch.fx.passes.shape_prop import ShapeProp
@@ -43,8 +42,7 @@ def generate_module_dict(model: torch.nn.Module) -> Dict:
     return module_dict
 
 
-def build_graph(model: torch.fx.GraphModule,
-                to_numpy: Callable) -> Graph:
+def build_graph(model: torch.fx.GraphModule, to_numpy: Callable) -> Graph:
     """
     Given a Pytorch FX model, build and return an networkx MultiDiGraph containing all data (nodes, edges,
     inputs and outputs) representing that model.
@@ -69,9 +67,9 @@ def build_graph(model: torch.fx.GraphModule,
     return Graph(model._get_name(), nodes, inputs, outputs, edges)
 
 
-def fx_graph_module_generation(pytorch_model: torch.nn.Module,
-                               representative_data_gen: Callable,
-                               to_tensor: Callable) -> torch.fx.GraphModule:
+def fx_graph_module_generation(
+    pytorch_model: torch.nn.Module, representative_data_gen: Callable, to_tensor: Callable
+) -> torch.fx.GraphModule:
     """
     Generates a fx.GraphModule from a torch.nn.Module.
 
@@ -84,7 +82,7 @@ def fx_graph_module_generation(pytorch_model: torch.nn.Module,
         A fx.GraphModule (static model) representing the Pytorch model.
     """
     set_model(pytorch_model)
-    symbolic_traced = symbolic_trace(pytorch_model)
+    symbolic_traced = symbolic_trace(pytorch_model, concrete_args={"targets": None})
     inputs = next(representative_data_gen())
     input_for_shape_infer = [to_tensor(i) for i in inputs]
     ShapeProp(symbolic_traced).propagate(*input_for_shape_infer)
@@ -127,10 +125,9 @@ def remove_broken_nodes_from_graph(graph):
     return graph
 
 
-def model_reader(model: torch.nn.Module,
-                 representative_data_gen: Callable,
-                 to_numpy: Callable,
-                 to_tensor: Callable) -> Graph:
+def model_reader(
+    model: torch.nn.Module, representative_data_gen: Callable, to_numpy: Callable, to_tensor: Callable
+) -> Graph:
     """
     Reads a Pytorch model and converts it to an FX Graph using the fx toolkit. Then, builds a base graph representing
     the fx graph. Finally, we filter "broken nodes" (nodes without outputs, for example: "assert").
